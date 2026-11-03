@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>간식 공장 - 고양이 간식 분류 게임</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts (Modern Clean Gothic) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Noto Sans KR', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Conveyor belt animation */
+        @keyframes moveBelt {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 0; }
+        }
+
+        .conveyor-belt {
+            background-color: #27272a;
+            background-image: repeating-linear-gradient(
+                90deg,
+                #18181b,
+                #18181b 25px,
+                #3f3f46 25px,
+                #3f3f46 50px
+            );
+            animation: moveBelt 1s linear infinite;
+        }
+
+        .conveyor-belt.paused {
+            animation-play-state: paused;
+        }
+
+        /* Screen feedback overlay animations */
+        @keyframes flashGreen {
+            0% { background-color: rgba(34, 197, 94, 0.35); }
+            100% { background-color: rgba(0, 0, 0, 0); }
+        }
+
+        @keyframes flashRed {
+            0% { background-color: rgba(239, 68, 68, 0.4); }
+            100% { background-color: rgba(0, 0, 0, 0); }
+        }
+
+        .flash-green {
+            animation: flashGreen 0.35s ease-out;
+        }
+
+        .flash-red {
+            animation: flashRed 0.35s ease-out;
+        }
+
+        /* Floating Score Feedback */
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+            50% { transform: translate(-50%, -30px) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -60px) scale(0.9); }
+        }
+
+        .floating-text {
+            position: absolute;
+            animation: floatUp 0.8s ease-out forwards;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* Fever Time Vivid Glow & Background Effect */
+        @keyframes feverBgPulse {
+            0% { background-color: #581c87; }
+            50% { background-color: #7e22ce; }
+            100% { background-color: #581c87; }
+        }
+
+        @keyframes feverGlow {
+            0% { box-shadow: inset 0 0 25px #c084fc, 0 0 20px #e879f9; }
+            50% { box-shadow: inset 0 0 45px #f0abfc, 0 0 35px #f43f5e; }
+            100% { box-shadow: inset 0 0 25px #c084fc, 0 0 20px #e879f9; }
+        }
+
+        .fever-active {
+            animation: feverGlow 0.8s infinite alternate !important;
+            border-color: #c084fc !important;
+        }
+
+        .fever-screen {
+            animation: feverBgPulse 1s infinite linear !important;
+        }
+
+        .cat-select-btn.selected, .acc-select-btn.selected {
+            border-color: #000000;
+            background-color: #f4f4f5;
+            box-shadow: 0 0 0 2px #18181b;
+        }
+
+        /* Cat Punch Motion */
+        @keyframes catPunch {
+            0% { transform: translateY(0) scale(1) rotate(0deg); }
+            40% { transform: translateY(-12px) scale(1.1) rotate(-8deg); }
+            100% { transform: translateY(0) scale(1) rotate(0deg); }
+        }
+
+        .cat-punch {
+            animation: catPunch 0.22s ease-out;
+        }
+
+        /* Enhanced Feedback Text Pop */
+        @keyframes textPop {
+            0% { opacity: 0; transform: translate(-50%, 20px) scale(0.6); }
+            40% { opacity: 1; transform: translate(-50%, -20px) scale(1.3); }
+            80% { opacity: 1; transform: translate(-50%, -35px) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, -55px) scale(0.9); }
+        }
+
+        .floating-feedback {
+            position: absolute;
+            animation: textPop 0.75s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            pointer-events: none;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body class="bg-zinc-900 min-h-screen flex items-center justify-center p-2 sm:p-4 text-zinc-900">
+
+    <!-- Game Container (Black, Gray, White Theme) -->
+    <div id="game-card" class="w-full max-w-md bg-white rounded-2xl shadow-2xl border-2 border-zinc-700 overflow-hidden flex flex-col relative transition-all duration-300">
+        
+        <!-- Screen Feedback Flash Overlay -->
+        <div id="flash-overlay" class="absolute inset-0 pointer-events-none z-40 rounded-2xl"></div>
+
+        <!-- Floating Feedback Text Container -->
+        <div id="feedback-container" class="absolute top-1/2 left-1/2 w-full pointer-events-none z-50"></div>
+
+        <!-- Header: Title, Stats & Lives -->
+        <div class="bg-zinc-900 p-4 text-white flex flex-col gap-2 border-b border-zinc-800">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-industry text-zinc-400"></i> 간식 공장
+                </h1>
+                <div id="lives-container" class="flex gap-1 text-xl">
+                    <span class="paws text-zinc-100">🐾</span>
+                    <span class="paws text-zinc-100">🐾</span>
+                    <span class="paws text-zinc-100">🐾</span>
+                </div>
+            </div>
+
+            <!-- Dashboard: Score, Combo, Fever Bar -->
+            <div class="flex justify-between items-end bg-zinc-800 p-3 rounded-xl border border-zinc-700 text-white">
+                <div>
+                    <div class="text-xs text-zinc-400 font-medium">분류한 간식</div>
+                    <div id="score-display" class="text-3xl font-extrabold leading-none text-white tracking-wider">0</div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button onclick="openCustomizer()" class="bg-zinc-700 hover:bg-zinc-600 text-xs text-zinc-200 px-2.5 py-1.5 rounded-lg border border-zinc-600 font-bold active:scale-95 transition-all flex items-center gap-1">
+                        <span>👔</span> 꾸미기
+                    </button>
+                    
+                    <!-- Combo & Fever Gauge -->
+                    <div class="w-28 flex flex-col items-end gap-1.5">
+                        <div class="flex items-center gap-1.5">
+                            <span id="combo-badge" class="hidden text-xs bg-zinc-100 text-zinc-900 px-2 py-0.5 rounded font-bold">
+                                <span id="combo-count">0</span> C
+                            </span>
+                            <span id="fever-badge" class="hidden text-xs bg-purple-500 text-white px-2 py-0.5 rounded font-black animate-bounce shadow-md">
+                                ⚡ FEVER
+                            </span>
+                        </div>
+                        <div class="w-full bg-zinc-700 h-2.5 rounded-full overflow-hidden border border-zinc-600">
+                            <div id="fever-bar" class="bg-purple-400 h-full w-0 transition-all duration-200"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Game Screen (Conveyor & Cat Worker) -->
+        <div id="game-screen" class="relative bg-zinc-100 flex-1 min-h-[310px] flex flex-col justify-between overflow-hidden border-b border-zinc-300 transition-colors duration-500">
+            
+            <!-- Top Status Banner -->
+            <div class="pt-3 px-4 flex justify-between items-center text-xs font-bold text-zinc-700 z-10">
+                <span id="speed-indicator" class="bg-zinc-200/90 px-2.5 py-1 rounded border border-zinc-300">
+                    레일 속도: <span id="speed-val">1.0</span>x
+                </span>
+                <span class="text-zinc-500 font-normal bg-white/70 px-2 py-0.5 rounded">키보드 [1, 2, 3]</span>
+            </div>
+
+            <!-- Belt Target Line (Box Entry Zone) -->
+            <div class="relative w-full my-auto py-6">
+                <!-- Conveyor Belt Track -->
+                <div id="conveyor" class="conveyor-belt h-24 w-full relative border-y-2 border-zinc-800 shadow-inner flex items-center">
+                    
+                    <!-- Sorting Target Box Line -->
+                    <div class="absolute right-24 top-0 bottom-0 w-20 bg-zinc-400/20 border-2 border-dashed border-zinc-900 flex items-center justify-center pointer-events-none z-10">
+                        <span class="text-[11px] text-zinc-900 font-bold bg-white/90 px-1.5 py-0.5 rounded border border-zinc-400">분류구역</span>
+                    </div>
+
+                    <!-- Item Spawner Container -->
+                    <div id="item-container" class="absolute inset-0 overflow-hidden"></div>
+
+                    <!-- On-Site Cat Worker (Right beside Sorting Line) -->
+                    <div id="cat-worker-container" class="absolute right-4 bottom-1 z-20 flex flex-col items-center pointer-events-none">
+                        <!-- Paw Punch Effect Icon -->
+                        <div id="punch-paw" class="text-xl opacity-0 transition-opacity duration-150 transform -translate-x-4 translate-y-2">🐾</div>
+                        <div id="cat-avatar" class="relative w-20 h-24 transition-transform duration-100 flex items-end justify-center">
+                            <div id="cat-render" class="w-full h-full flex items-end justify-center relative">
+                                <!-- Rendered Full-Body Cat + Accessories SVG via JS -->
+                            </div>
+                        </div>
+                        <div id="cat-name-tag" class="text-[10px] bg-zinc-900/90 text-white px-2 py-0.5 rounded-full mt-0.5 font-bold shadow-sm inline-block">
+                            고둥이
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Warning / Guide Bar -->
+            <div class="pb-2 text-center z-10">
+                <p id="guide-text" class="text-xs text-zinc-700 font-medium bg-zinc-200/90 inline-block px-3 py-1 rounded border border-zinc-300 shadow-sm">
+                    상한 간식(🐟💥)은 버튼을 누르지 말고 넘기세요.
+                </p>
+            </div>
+        </div>
+
+        <!-- Interactive Control Buttons (1, 2, 3) -->
+        <div class="bg-zinc-900 p-3 sm:p-4 grid grid-cols-3 gap-2 sm:gap-3">
+            <!-- Box 1: Fish -->
+            <button onclick="handleInput(1)" class="active:scale-95 transition-all bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white p-2 sm:p-3 rounded-xl flex flex-col items-center justify-center gap-1 group">
+                <span class="bg-zinc-700 text-zinc-300 text-[10px] px-2 py-0.5 rounded font-bold">1번 키</span>
+                <span class="text-2xl group-hover:scale-110 transition-transform">🐟</span>
+                <span class="text-xs font-bold text-zinc-200">생선</span>
+            </button>
+
+            <!-- Box 2: Churu Icon -->
+            <button onclick="handleInput(2)" class="active:scale-95 transition-all bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white p-2 sm:p-3 rounded-xl flex flex-col items-center justify-center gap-1 group">
+                <span class="bg-zinc-700 text-zinc-300 text-[10px] px-2 py-0.5 rounded font-bold">2번 키</span>
+                <div class="w-7 h-7 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <svg viewBox="0 0 40 40" class="w-full h-full drop-shadow">
+                        <rect x="14" y="10" width="12" height="24" rx="3" fill="#f97316" stroke="#ea580c" stroke-width="1.5" />
+                        <rect x="15.5" y="15" width="9" height="11" rx="1" fill="#ffffff" />
+                        <path d="M 17,18 L 23,18" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/>
+                        <circle cx="20" cy="22" r="1.5" fill="#f97316"/>
+                        <path d="M 18,10 Q 20,4 22,10 Z" fill="#fdba74"/>
+                        <ellipse cx="20" cy="9" rx="3" ry="2" fill="#fed7aa"/>
+                    </svg>
+                </div>
+                <span class="text-xs font-bold text-zinc-200">츄르</span>
+            </button>
+
+            <!-- Box 3: Catnip -->
+            <button onclick="handleInput(3)" class="active:scale-95 transition-all bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white p-2 sm:p-3 rounded-xl flex flex-col items-center justify-center gap-1 group">
+                <span class="bg-zinc-700 text-zinc-300 text-[10px] px-2 py-0.5 rounded font-bold">3번 키</span>
+                <span class="text-2xl group-hover:scale-110 transition-transform">🌿</span>
+                <span class="text-xs font-bold text-zinc-200">캣닙</span>
+            </button>
+        </div>
+
+        <!-- Start Overlay -->
+        <div id="start-modal" class="absolute inset-0 bg-zinc-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-between p-6 text-center text-white">
+            <div class="w-full flex flex-col items-center mt-2">
+                <h2 class="text-2xl font-black text-white mb-1 tracking-tight">간식 공장 라인 분류</h2>
+                <p class="text-xs text-zinc-400 leading-relaxed max-w-xs">
+                    내려오는 간식을 분류하세요.<br>
+                    <span class="text-zinc-200 font-bold">1: 생선 | 2: 츄르 | 3: 캣닙</span><br>
+                    <span class="text-zinc-400">(상한 간식은 누르지 않고 통과)</span>
+                </p>
+            </div>
+
+            <!-- Current Cat Preview Card -->
+            <div class="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 w-full max-w-xs">
+                <div id="start-cat-preview" class="w-14 h-14 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center p-1"></div>
+                <div class="flex-1 text-left">
+                    <div class="text-xs text-zinc-400 font-bold">알바냥 스타일</div>
+                    <div id="start-cat-name" class="hidden text-sm font-extrabold text-white">고둥이</div>
+                </div>
+                <button onclick="openCustomizer()" class="bg-white text-zinc-950 text-xs font-bold px-3 py-2 rounded-lg hover:bg-zinc-200 active:scale-95 transition-all">
+                    꾸미기 👔
+                </button>
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-white text-zinc-950 font-black py-3.5 rounded-xl hover:bg-zinc-200 active:scale-95 transition-all shadow-lg text-base">
+                알바 시작하기 🐾
+            </button>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="gameover-modal" class="hidden absolute inset-0 bg-zinc-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-between p-6 text-center text-white">
+            <div class="w-full flex flex-col items-center mt-4">
+                <span class="text-4xl mb-2">🙀</span>
+                <h2 class="text-2xl font-black text-red-500 mb-1">퇴근 (게임 오버)</h2>
+                <p class="text-xs text-zinc-400">발바닥을 모두 소진했습니다.</p>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-xl px-6 py-3 mt-4">
+                    <div class="text-xs text-zinc-400 font-bold">최종 점수</div>
+                    <div id="final-score" class="text-3xl font-black text-white">0</div>
+                </div>
+            </div>
+
+            <!-- Current Cat Preview Card (GameOver) -->
+            <div class="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex items-center gap-3 w-full max-w-xs">
+                <div id="over-cat-preview" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center p-1"></div>
+                <div class="flex-1 text-left">
+                    <div class="text-xs text-zinc-400 font-bold">작업 고양이</div>
+                    <div id="over-cat-name" class="text-xs font-bold text-white">고둥이</div>
+                </div>
+                <button onclick="openCustomizer()" class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold px-3 py-2 rounded-lg hover:bg-zinc-700 active:scale-95 transition-all">
+                    꾸미기 👔
+                </button>
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-white text-zinc-950 font-black py-3 rounded-xl hover:bg-zinc-200 active:scale-95 transition-all text-sm">
+                다시 도전하기 🔄
+            </button>
+        </div>
+
+        <!-- Cat Customizer Modal (Dress Room) -->
+        <div id="customizer-modal" class="hidden absolute inset-0 bg-zinc-950/95 backdrop-blur-md z-50 flex flex-col justify-between p-5 text-white">
+            <div class="flex justify-between items-center border-b border-zinc-800 pb-3">
+                <h3 class="font-extrabold text-base flex items-center gap-2">
+                    <span>👔</span> 고양이 드레스룸
+                </h3>
+                <button onclick="closeCustomizer()" class="text-zinc-400 hover:text-white text-lg px-2">✕</button>
+            </div>
+
+            <!-- Live Combined Preview -->
+            <div class="flex flex-col items-center my-3">
+                <div class="w-24 h-24 rounded-full bg-zinc-800 border-2 border-zinc-700 flex items-center justify-center p-1 shadow-inner relative">
+                    <div id="custom-live-preview" class="w-full h-full"></div>
+                </div>
+                <div id="custom-cat-title" class="text-xs font-bold text-zinc-300 mt-2">고둥이</div>
+            </div>
+
+            <!-- Customizer Tab Options -->
+            <div class="flex-1 overflow-y-auto space-y-3 pr-1">
+                <div>
+                    <label class="text-xs font-bold text-zinc-400 block mb-1.5">1. 알바냥 선택</label>
+                    <div id="cat-options-grid" class="grid grid-cols-4 gap-2"></div>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-zinc-400 block mb-1.5">2. 악세서리 선택</label>
+                    <div id="acc-options-grid" class="grid grid-cols-5 gap-1.5"></div>
+                </div>
+            </div>
+
+            <button onclick="closeCustomizer()" class="w-full bg-white text-zinc-950 font-black py-2.5 rounded-xl hover:bg-zinc-200 active:scale-95 transition-all text-xs mt-2">
+                착용 완료 🐾
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Game Logic -->
+    <script>
+        // Custom Churu SVG Pattern (Pouch + Squeezed Treat)
+        const CHURU_SVG = `
+            <div class="w-8 h-8 flex items-center justify-center filter drop-shadow">
+                <svg viewBox="0 0 40 40" class="w-full h-full">
+                    <rect x="14" y="10" width="12" height="24" rx="3" fill="#f97316" stroke="#ea580c" stroke-width="1.5" />
+                    <rect x="15.5" y="15" width="9" height="11" rx="1" fill="#ffffff" />
+                    <path d="M 17,18 L 23,18" stroke="#f97316" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="20" cy="22" r="1.5" fill="#f97316"/>
+                    <path d="M 18,10 Q 20,4 22,10 Z" fill="#fdba74"/>
+                    <ellipse cx="20" cy="9" rx="3" ry="2" fill="#fed7aa"/>
+                </svg>
+            </div>
+        `;
+
+        // Brand New Simple Cute Toon-Line Cat SVGs
+        const CAT_PRESETS = [
+            {
+                id: 'godung',
+                name: '고둥이',
+                svg: `
+                    <svg viewBox="0 0 100 120" class="w-full h-full drop-shadow">
+                        <!-- Ears -->
+                        <path d="M 28 38 L 34 18 L 46 32 Z" fill="#9ca3af" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        <path d="M 72 38 L 66 18 L 54 32 Z" fill="#9ca3af" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        <path d="M 32 35 L 35 23 L 42 30 Z" fill="#6b7280"/>
+                        <path d="M 68 35 L 65 23 L 58 30 Z" fill="#6b7280"/>
+
+                        <!-- Tail -->
+                        <path d="M 74 92 C 95 85 92 62 82 58" stroke="#9ca3af" stroke-width="7" stroke-linecap="round" fill="none"/>
+                        <path d="M 74 92 C 95 85 92 62 82 58" stroke="#18181b" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+
+                        <!-- Body & Paws -->
+                        <path d="M 30 70 C 30 58 70 58 70 70 L 74 98 C 74 105 26 105 26 98 Z" fill="#e5e7eb" stroke="#18181b" stroke-width="3.5" stroke-linejoin="round"/>
+                        <ellipse cx="40" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+                        <ellipse cx="60" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+
+                        <!-- Head -->
+                        <path d="M 22 46 C 22 28 78 28 78 46 C 78 68 22 68 22 46 Z" fill="#e5e7eb" stroke="#18181b" stroke-width="3.5"/>
+
+                        <!-- Tabby Stripes -->
+                        <path d="M 44 32 L 44 38 M 50 30 L 50 38 M 56 32 L 56 38" stroke="#4b5563" stroke-width="2.5" stroke-linecap="round"/>
+
+                        <!-- Eyes (Cute Tiny Dotted Eyes) -->
+                        <ellipse cx="38" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+                        <ellipse cx="62" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+
+                        <!-- Nose & Mouth -->
+                        <polygon points="50,53 47.5,50.5 52.5,50.5" fill="#4b5563"/>
+                        <path d="M 46.5 56.5 Q 50 58.5 53.5 56.5" stroke="#18181b" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    </svg>
+                `
+            },
+            {
+                id: 'tuxedo',
+                name: '턱시도',
+                svg: `
+                    <svg viewBox="0 0 100 120" class="w-full h-full drop-shadow">
+                        <!-- Ears -->
+                        <path d="M 28 38 L 34 18 L 46 32 Z" fill="#27272a" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        <path d="M 72 38 L 66 18 L 54 32 Z" fill="#27272a" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        
+                        <!-- Tail -->
+                        <path d="M 74 92 C 95 85 92 62 82 58" stroke="#27272a" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+                        <!-- Body & Paws -->
+                        <path d="M 30 70 C 30 58 70 58 70 70 L 74 98 C 74 105 26 105 26 98 Z" fill="#27272a" stroke="#18181b" stroke-width="3.5" stroke-linejoin="round"/>
+                        <path d="M 50 64 L 40 102 L 60 102 Z" fill="#ffffff"/>
+                        <ellipse cx="40" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+                        <ellipse cx="60" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+
+                        <!-- Head -->
+                        <path d="M 22 46 C 22 28 78 28 78 46 C 78 68 22 68 22 46 Z" fill="#27272a" stroke="#18181b" stroke-width="3.5"/>
+                        <path d="M 50 38 Q 36 52 26 62 Q 50 70 74 62 Q 64 52 50 38 Z" fill="#ffffff"/>
+
+                        <!-- Eyes -->
+                        <ellipse cx="38" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+                        <ellipse cx="62" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+
+                        <!-- Nose & Mouth -->
+                        <polygon points="50,53 47.5,50.5 52.5,50.5" fill="#18181b"/>
+                        <path d="M 46.5 56.5 Q 50 58.5 53.5 56.5" stroke="#18181b" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    </svg>
+                `
+            },
+            {
+                id: 'calico',
+                name: '삼색이',
+                svg: `
+                    <svg viewBox="0 0 100 120" class="w-full h-full drop-shadow">
+                        <!-- Ears -->
+                        <path d="M 28 38 L 34 18 L 46 32 Z" fill="#ea580c" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        <path d="M 72 38 L 66 18 L 54 32 Z" fill="#27272a" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        
+                        <!-- Tail -->
+                        <path d="M 74 92 C 95 85 92 62 82 58" stroke="#ea580c" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+                        <!-- Body & Paws -->
+                        <path d="M 30 70 C 30 58 70 58 70 70 L 74 98 C 74 105 26 105 26 98 Z" fill="#ffffff" stroke="#18181b" stroke-width="3.5" stroke-linejoin="round"/>
+                        <path d="M 26 75 C 26 90 38 94 32 98 L 26 98 Z" fill="#ea580c"/>
+                        <path d="M 74 75 C 74 90 62 94 68 98 L 74 98 Z" fill="#27272a"/>
+
+                        <ellipse cx="40" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+                        <ellipse cx="60" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+
+                        <!-- Head -->
+                        <path d="M 22 46 C 22 28 78 28 78 46 C 78 68 22 68 22 46 Z" fill="#ffffff" stroke="#18181b" stroke-width="3.5"/>
+                        <path d="M 22 44 C 22 34 36 32 40 44 C 32 56 22 56 22 44 Z" fill="#ea580c"/>
+                        <path d="M 78 44 C 78 34 64 32 60 44 C 68 56 78 56 78 44 Z" fill="#27272a"/>
+
+                        <!-- Eyes -->
+                        <ellipse cx="38" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+                        <ellipse cx="62" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+
+                        <!-- Nose & Mouth -->
+                        <polygon points="50,53 47.5,50.5 52.5,50.5" fill="#4b5563"/>
+                        <path d="M 46.5 56.5 Q 50 58.5 53.5 56.5" stroke="#18181b" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    </svg>
+                `
+            },
+            {
+                id: 'cheese',
+                name: '치즈냥',
+                svg: `
+                    <svg viewBox="0 0 100 120" class="w-full h-full drop-shadow">
+                        <!-- Ears -->
+                        <path d="M 28 38 L 34 18 L 46 32 Z" fill="#f59e0b" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        <path d="M 72 38 L 66 18 L 54 32 Z" fill="#f59e0b" stroke="#18181b" stroke-width="3" stroke-linejoin="round"/>
+                        
+                        <!-- Tail -->
+                        <path d="M 74 92 C 95 85 92 62 82 58" stroke="#f59e0b" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+                        <!-- Body & Paws -->
+                        <path d="M 30 70 C 30 58 70 58 70 70 L 74 98 C 74 105 26 105 26 98 Z" fill="#fbbf24" stroke="#18181b" stroke-width="3.5" stroke-linejoin="round"/>
+                        <ellipse cx="50" cy="85" rx="12" ry="10" fill="#ffffff"/>
+
+                        <ellipse cx="40" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+                        <ellipse cx="60" cy="102" rx="7" ry="4.5" fill="#ffffff" stroke="#18181b" stroke-width="2.5"/>
+
+                        <!-- Head -->
+                        <path d="M 22 46 C 22 28 78 28 78 46 C 78 68 22 68 22 46 Z" fill="#fbbf24" stroke="#18181b" stroke-width="3.5"/>
+                        <ellipse cx="50" cy="56" rx="14" ry="8" fill="#ffffff"/>
+
+                        <!-- Eyes -->
+                        <ellipse cx="38" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+                        <ellipse cx="62" cy="48" rx="3" ry="3.5" fill="#18181b"/>
+
+                        <!-- Nose & Mouth -->
+                        <polygon points="50,53 47.5,50.5 52.5,50.5" fill="#d97706"/>
+                        <path d="M 46.5 56.5 Q 50 58.5 53.5 56.5" stroke="#18181b" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    </svg>
+                `
+            }
+        ];
+
+        // Updated Accessory SVG Overlays (Fish Bag, Bell Necklace, Scarf, Sunglasses)
+        const ACCESSORIES = [
+            { id: 'none', name: '없음', icon: '❌', svg: '' },
+            {
+                id: 'fishbag',
+                name: '생선 가방',
+                icon: '🐟',
+                svg: `
+                    <g transform="translate(0, 0)">
+                        <!-- Crossbody Strap -->
+                        <path d="M 32 64 L 68 86" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+                        <!-- Small Cute Fish Bag -->
+                        <g transform="translate(62, 82) rotate(15)">
+                            <ellipse cx="0" cy="0" rx="9" ry="5.5" fill="#60a5fa" stroke="#1f2937" stroke-width="1.5"/>
+                            <path d="M 7 -2 L 13 -5 L 12 0 L 13 5 L 7 2 Z" fill="#3b82f6" stroke="#1f2937" stroke-width="1.5"/>
+                            <circle cx="-5" cy="-1.5" r="1" fill="#1f2937"/>
+                        </g>
+                    </g>
+                `
+            },
+            {
+                id: 'bell',
+                name: '방울 목걸이',
+                icon: '🔔',
+                svg: `
+                    <g transform="translate(50, 62)">
+                        <!-- Red Ribbon Band -->
+                        <path d="M -18 -3 Q 0 4 18 -3" stroke="#ef4444" stroke-width="3" stroke-linecap="round" fill="none"/>
+                        <!-- Gold Bell -->
+                        <circle cx="0" cy="2" r="4.5" fill="#fbbf24" stroke="#78350f" stroke-width="1.2"/>
+                        <circle cx="0" cy="3" r="1" fill="#78350f"/>
+                    </g>
+                `
+            },
+            {
+                id: 'scarf',
+                name: '목도리',
+                icon: '🧣',
+                svg: `
+                    <g transform="translate(50, 61)">
+                        <!-- Soft Red Scarf Wrap -->
+                        <path d="M -20 -3 Q 0 7 20 -3 Q 15 8 -20 -3 Z" fill="#dc2626" stroke="#991b1b" stroke-width="1.5"/>
+                        <!-- Hanging Scarf Tail -->
+                        <path d="M 5 2 L 12 20 L 2 22 L -3 3 Z" fill="#b91c1c" stroke="#991b1b" stroke-width="1.5"/>
+                    </g>
+                `
+            },
+            {
+                id: 'sunglasses',
+                name: '선글라스',
+                icon: '😎',
+                svg: `
+                    <g transform="translate(0, 1)">
+                        <!-- Cool Black Sunglasses Lenses & Frame -->
+                        <path d="M 30 43 L 45 43 L 43 52 L 32 52 Z" fill="#18181b" stroke="#000000" stroke-width="1.5"/>
+                        <path d="M 55 43 L 70 43 L 68 52 L 57 52 Z" fill="#18181b" stroke="#000000" stroke-width="1.5"/>
+                        <line x1="45" y1="45" x2="55" y2="45" stroke="#18181b" stroke-width="2"/>
+                        <!-- Glare Lines -->
+                        <line x1="33" y1="45" x2="38" y2="50" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="58" y1="45" x2="63" y2="50" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+                    </g>
+                `
+            }
+        ];
+
+        // Item Type Definitions
+        const ITEM_TYPES = {
+            1: { type: 1, name: '생선', html: '<span class="text-4xl drop-shadow">🐟</span>' },
+            2: { type: 2, name: '츄르', html: CHURU_SVG },
+            3: { type: 3, name: '캣닙', html: '<span class="text-4xl drop-shadow">🌿</span>' },
+            BAD: { type: 99, name: '상한 간식', html: '<div class="relative flex items-center justify-center"><span class="text-4xl filter grayscale contrast-200">🐟</span><span class="absolute text-xl font-bold text-red-500">💥</span></div>' }
+        };
+
+        // Game State Variables
+        let score = 0;
+        let lives = 3;
+        let combo = 0;
+        let speed = 1.0;
+        let isFever = false;
+        let isGameRunning = false;
+        let items = [];
+        let itemIdCounter = 0;
+        let gameLoopId = null;
+        let spawnTimer = null;
+        let feverTimer = null;
+
+        let selectedCatIndex = 0;
+        let selectedAccIndex = 0;
+
+        // DOM Element References
+        const gameCard = document.getElementById('game-card');
+        const gameScreen = document.getElementById('game-screen');
+        const scoreDisplay = document.getElementById('score-display');
+        const speedVal = document.getElementById('speed-val');
+        const livesContainer = document.getElementById('lives-container');
+        const comboBadge = document.getElementById('combo-badge');
+        const comboCount = document.getElementById('combo-count');
+        const feverBadge = document.getElementById('fever-badge');
+        const feverBar = document.getElementById('fever-bar');
+        const itemContainer = document.getElementById('item-container');
+        const conveyor = document.getElementById('conveyor');
+        const flashOverlay = document.getElementById('flash-overlay');
+        const feedbackContainer = document.getElementById('feedback-container');
+        const startModal = document.getElementById('start-modal');
+        const gameoverModal = document.getElementById('gameover-modal');
+        const customizerModal = document.getElementById('customizer-modal');
+        const finalScore = document.getElementById('final-score');
+        const catRender = document.getElementById('cat-render');
+        const catAvatar = document.getElementById('cat-avatar');
+        const catNameTag = document.getElementById('cat-name-tag');
+        const punchPaw = document.getElementById('punch-paw');
+
+        // Helper to Generate Cat + Accessory SVG
+        function getCombinedCatSVG(catIdx, accIdx) {
+            const cat = CAT_PRESETS[catIdx] || CAT_PRESETS[0];
+            const acc = ACCESSORIES[accIdx] || ACCESSORIES[0];
+            return `
+                <div class="relative w-full h-full flex items-center justify-center">
+                    ${cat.svg}
+                    ${acc.svg ? `<svg viewBox="0 0 100 120" class="absolute inset-0 w-full h-full pointer-events-none">${acc.svg}</svg>` : ''}
+                </div>
+            `;
+        }
+
+        function openCustomizer() {
+            renderCustomizerGrids();
+            updateCatDisplay();
+            customizerModal.classList.remove('hidden');
+        }
+
+        function closeCustomizer() {
+            customizerModal.classList.add('hidden');
+        }
+
+        // Render Current Cat with Accessories across UI
+        function updateCatDisplay() {
+            const combinedSVG = getCombinedCatSVG(selectedCatIndex, selectedAccIndex);
+            const catName = CAT_PRESETS[selectedCatIndex].name;
+
+            // Main Game Screen Cat
+            catRender.innerHTML = combinedSVG;
+            catNameTag.innerText = catName;
+
+            // Start Modal Preview
+            document.getElementById('start-cat-preview').innerHTML = combinedSVG;
+            document.getElementById('start-cat-name').innerText = catName;
+
+            // Game Over Modal Preview
+            document.getElementById('over-cat-preview').innerHTML = combinedSVG;
+            document.getElementById('over-cat-name').innerText = catName;
+
+            // Customizer Live Preview
+            document.getElementById('custom-live-preview').innerHTML = combinedSVG;
+            document.getElementById('custom-cat-title').innerText = catName;
+        }
+
+        function renderCustomizerGrids() {
+            const catGrid = document.getElementById('cat-options-grid');
+            const accGrid = document.getElementById('acc-options-grid');
+
+            catGrid.innerHTML = '';
+            accGrid.innerHTML = '';
+
+            // Render Cat Options
+            CAT_PRESETS.forEach((cat, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `cat-select-btn p-1.5 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-all flex flex-col items-center gap-1 ${idx === selectedCatIndex ? 'selected' : ''}`;
+                btn.onclick = () => selectCustomCat(idx);
+
+                const iconBox = document.createElement('div');
+                iconBox.className = 'w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center p-0.5';
+                iconBox.innerHTML = cat.svg;
+
+                const nameLabel = document.createElement('span');
+                nameLabel.className = 'text-[10px] font-bold text-zinc-300';
+                nameLabel.innerText = cat.name;
+
+                btn.appendChild(iconBox);
+                btn.appendChild(nameLabel);
+                catGrid.appendChild(btn);
+            });
+
+            // Render Accessory Options
+            ACCESSORIES.forEach((acc, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `acc-select-btn p-1.5 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-all flex flex-col items-center gap-1 ${idx === selectedAccIndex ? 'selected' : ''}`;
+                btn.onclick = () => selectCustomAcc(idx);
+
+                const iconLabel = document.createElement('span');
+                iconLabel.className = 'text-base';
+                iconLabel.innerText = acc.icon;
+
+                const nameLabel = document.createElement('span');
+                nameLabel.className = 'text-[9px] font-bold text-zinc-300';
+                nameLabel.innerText = acc.name;
+
+                btn.appendChild(iconLabel);
+                btn.appendChild(nameLabel);
+                accGrid.appendChild(btn);
+            });
+        }
+
+        function selectCustomCat(idx) {
+            selectedCatIndex = idx;
+            renderCustomizerGrids();
+            updateCatDisplay();
+        }
+
+        function selectCustomAcc(idx) {
+            selectedAccIndex = idx;
+            renderCustomizerGrids();
+            updateCatDisplay();
+        }
+
+        // Initialize Cat Customizer System
+        updateCatDisplay();
+
+        // Keyboard Controls
+        window.addEventListener('keydown', (e) => {
+            if (!isGameRunning) return;
+            if (e.key === '1') handleInput(1);
+            if (e.key === '2') handleInput(2);
+            if (e.key === '3') handleInput(3);
+        });
+
+        // Start Game Init
+        function startGame() {
+            score = 0;
+            lives = 3;
+            combo = 0;
+            speed = 1.0;
+            isFever = false;
+            items = [];
+            itemIdCounter = 0;
+            isGameRunning = true;
+
+            // Clear containers & UI resets
+            itemContainer.innerHTML = '';
+            feedbackContainer.innerHTML = '';
+            updateScoreUI();
+            updateLivesUI();
+            updateFeverUI();
+            
+            startModal.classList.add('hidden');
+            gameoverModal.classList.add('hidden');
+            customizerModal.classList.add('hidden');
+            gameCard.classList.remove('fever-active');
+            gameScreen.classList.remove('fever-screen');
+            conveyor.classList.remove('paused');
+
+            // Clear previous intervals
+            clearTimeout(spawnTimer);
+            cancelAnimationFrame(gameLoopId);
+
+            // Start Loops
+            scheduleNextSpawn();
+            gameLoopId = requestAnimationFrame(updateGame);
+        }
+
+        // Dynamic Spawner Loop
+        function scheduleNextSpawn() {
+            if (!isGameRunning) return;
+
+            spawnItem();
+            const baseDelay = 1800;
+            const currentDelay = Math.max(600, baseDelay / speed);
+
+            spawnTimer = setTimeout(scheduleNextSpawn, currentDelay);
+        }
+
+        // Spawn Single Item
+        function spawnItem() {
+            if (!isGameRunning) return;
+
+            let itemData;
+            const isBad = Math.random() < 0.22;
+
+            if (isBad) {
+                itemData = ITEM_TYPES.BAD;
+            } else {
+                const randType = Math.floor(Math.random() * 3) + 1;
+                itemData = ITEM_TYPES[randType];
+            }
+
+            const id = ++itemIdCounter;
+            const itemElem = document.createElement('div');
+            itemElem.id = `item-${id}`;
+            itemElem.className = `absolute top-1/2 transform -translate-y-1/2 flex items-center justify-center transition-transform duration-100`;
+            itemElem.style.left = '-60px';
+            itemElem.innerHTML = itemData.html;
+
+            itemContainer.appendChild(itemElem);
+
+            items.push({
+                id: id,
+                type: itemData.type,
+                x: -60,
+                elem: itemElem,
+                processed: false
+            });
+        }
+
+        // Main Game Loop
+        function updateGame() {
+            if (!isGameRunning) return;
+
+            const containerWidth = itemContainer.clientWidth;
+            const moveStep = 2.2 * speed;
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                item.x += moveStep;
+                item.elem.style.left = `${item.x}px`;
+
+                if (item.x > containerWidth - 40 && !item.processed) {
+                    item.processed = true;
+
+                    if (item.type === 99) {
+                        triggerSuccess('야옹! +1', true);
+                    } else {
+                        triggerFailure('놓침! 캬악 -1');
+                    }
+
+                    removeItem(item.id);
+                }
+            }
+
+            gameLoopId = requestAnimationFrame(updateGame);
+        }
+
+        // Trigger Working Cat Paw Punch Animation
+        function playCatPunchAnimation() {
+            catAvatar.classList.remove('cat-punch');
+            void catAvatar.offsetWidth; // Trigger Reflow
+            catAvatar.classList.add('cat-punch');
+
+            punchPaw.style.opacity = '1';
+            setTimeout(() => { punchPaw.style.opacity = '0'; }, 200);
+        }
+
+        // Handle Input Click (1, 2, 3)
+        function handleInput(pressedType) {
+            if (!isGameRunning) return;
+
+            playCatPunchAnimation();
+
+            const targetAreaStart = itemContainer.clientWidth - 200;
+            const targetAreaEnd = itemContainer.clientWidth - 40;
+
+            let targetItem = items.find(item => !item.processed && item.x >= targetAreaStart - 40 && item.x <= targetAreaEnd + 40);
+
+            if (!targetItem) {
+                triggerFailure('헛스윙! 캬악 -1');
+                return;
+            }
+
+            targetItem.processed = true;
+
+            if (isFever) {
+                triggerSuccess('냥! +2 (FEVER)');
+            } else if (targetItem.type === 99) {
+                triggerFailure('상한간식! 캬악 -1');
+            } else if (targetItem.type === Number(pressedType)) {
+                triggerSuccess('냥! +1');
+            } else {
+                triggerFailure('오분류! 캬악 -1');
+            }
+
+            removeItem(targetItem.id);
+        }
+
+        // Remove Item Helper
+        function removeItem(id) {
+            const index = items.findIndex(item => item.id === id);
+            if (index !== -1) {
+                const elem = items[index].elem;
+                if (elem && elem.parentNode) {
+                    elem.parentNode.removeChild(elem);
+                }
+                items.splice(index, 1);
+            }
+        }
+
+        // Trigger Success Handler
+        function triggerSuccess(text, isBadAvoided = false) {
+            const addPoints = isFever ? 2 : 1;
+            score += addPoints;
+            combo++;
+
+            flashOverlay.className = 'absolute inset-0 pointer-events-none z-40 rounded-2xl flash-green';
+            showEnhancedFeedback(text, 'bg-emerald-600 border-emerald-400 text-white');
+
+            if (score % 5 === 0 && speed < 2.5) {
+                speed += 0.15;
+            }
+
+            if (combo >= 10 && !isFever) {
+                startFeverTime();
+            }
+
+            updateScoreUI();
+            updateFeverUI();
+        }
+
+        // Trigger Failure Handler
+        function triggerFailure(text) {
+            lives--;
+            combo = 0;
+
+            flashOverlay.className = 'absolute inset-0 pointer-events-none z-40 rounded-2xl flash-red';
+            showEnhancedFeedback(text, 'bg-rose-600 border-rose-400 text-white');
+
+            updateLivesUI();
+            updateFeverUI();
+
+            if (lives <= 0) {
+                endGame();
+            }
+        }
+
+        // Start Fever Time
+        function startFeverTime() {
+            isFever = true;
+            feverBadge.classList.remove('hidden');
+            gameCard.classList.add('fever-active');
+            gameScreen.classList.add('fever-screen');
+            showEnhancedFeedback('⚡ 골골송 FEVER TIME! ⚡', 'bg-purple-600 border-purple-300 text-yellow-300 font-black');
+
+            clearTimeout(feverTimer);
+            feverTimer = setTimeout(() => {
+                isFever = false;
+                combo = 0;
+                feverBadge.classList.add('hidden');
+                gameCard.classList.remove('fever-active');
+                gameScreen.classList.remove('fever-screen');
+                updateFeverUI();
+            }, 6000);
+        }
+
+        // Enhanced Card Pop Feedback Text Handler
+        function showEnhancedFeedback(text, styleClasses) {
+            const textElem = document.createElement('div');
+            textElem.className = `floating-feedback px-4 py-2 rounded-xl border-2 font-black text-sm sm:text-base shadow-2xl ${styleClasses}`;
+            textElem.innerText = text;
+            textElem.style.left = '50%';
+            textElem.style.top = '45%';
+
+            feedbackContainer.appendChild(textElem);
+
+            setTimeout(() => {
+                if (textElem.parentNode) {
+                    textElem.parentNode.removeChild(textElem);
+                }
+            }, 750);
+        }
+
+        // UI Updates
+        function updateScoreUI() {
+            scoreDisplay.innerText = score;
+            speedVal.innerText = speed.toFixed(1);
+        }
+
+        function updateLivesUI() {
+            livesContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const paw = document.createElement('span');
+                paw.className = `paws transition-all ${i < lives ? 'text-zinc-100' : 'text-zinc-600 opacity-30'}`;
+                paw.innerText = '🐾';
+                livesContainer.appendChild(paw);
+            }
+        }
+
+        function updateFeverUI() {
+            if (combo > 0) {
+                comboBadge.classList.remove('hidden');
+                comboCount.innerText = combo;
+            } else {
+                comboBadge.classList.add('hidden');
+            }
+
+            const feverPercent = Math.min(100, (combo / 10) * 100);
+            feverBar.style.width = `${isFever ? 100 : feverPercent}%`;
+        }
+
+        // End Game Handler
+        function endGame() {
+            isGameRunning = false;
+            clearTimeout(spawnTimer);
+            clearTimeout(feverTimer);
+            cancelAnimationFrame(gameLoopId);
+
+            conveyor.classList.add('paused');
+            finalScore.innerText = score;
+            gameoverModal.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
